@@ -495,3 +495,26 @@ HMAC = Hash(Message, key) + Message
 ※ hash() 함수는 sha1, sha2, md5등의 알고리즘 사용 
 ```
 
+> configs/jwt/JwtConfig.java
+
+```java
+package org.koreait.configs.jwt;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(JwtConfig.class)
+public class JwtConfig {
+    @Bean
+    public TokenProvider tokenProvider(JwtProperties jwtProperties) {
+        return new TokenProvider(jwtProperties.getSecret(), jwtProperties.getAccessTokenValidityInSeconds());
+    }
+}
+```
+
+> <code>JwtConfig</code> : JWT 설정파일로 TokenProvider에 의존성을 주입하고 빈을 생성하는 역할
+
+
+
