@@ -246,8 +246,6 @@ public class MemberJoinService {
 }
 ```
 
-# JWT 설정
-
 > models/member/MemberInfo.java
 
 ```java
@@ -352,6 +350,8 @@ public class MemberInfoService implements UserDetailsService {
     }
 }
 ```
+
+# JWT 설정
 
 > configs/jwt/JwtProperties.java
 
