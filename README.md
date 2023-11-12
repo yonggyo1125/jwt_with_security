@@ -137,8 +137,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.koreait.commons.constants.MemberType;
-import org.springframework.data.annotation.Id;
+import org.koreait.commons.constants.MemberType;;
 
 @Entity
 @Data @Builder
@@ -176,6 +175,74 @@ import java.util.Optional;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
     Optional<Member> findByEmail(String email);
+}
+```
+
+> api/members/dto/RequestJoin.java
+
+```java
+package org.koreait.api.members.dto;
+
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+
+public record RequestJoin(
+        @NotBlank @Email
+        String email,
+
+        @NotBlank
+        String password,
+
+        @NotBlank
+        String confirmPassword,
+
+        @NotBlank
+        String name,
+
+        @NotBlank
+        String mobile,
+
+        @AssertTrue
+        boolean agree
+) {}
+```
+
+> models/member/MemberJoinService.java
+
+```java
+package org.koreait.models.member;
+
+import lombok.RequiredArgsConstructor;
+import org.koreait.api.members.dto.RequestJoin;
+import org.koreait.commons.constants.MemberType;
+import org.koreait.entities.Member;
+import org.koreait.repositories.MemberRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class MemberJoinService {
+    private final MemberRepository repository;
+    private final PasswordEncoder passwordEncoder;
+
+    public void save(RequestJoin join) {
+        String password = passwordEncoder.encode(join.password());
+        Member member = Member.builder()
+                .email(join.email())
+                .password(password)
+                .name(join.name())
+                .mobile(join.mobile())
+                .type(MemberType.USER)
+                .build();
+        save(member);
+    }
+
+    public void save(Member member) {
+        
+        repository.saveAndFlush(member);
+    }
 }
 ```
 

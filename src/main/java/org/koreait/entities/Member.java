@@ -6,7 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.koreait.commons.constants.MemberType;
-import org.springframework.data.annotation.Id;
 
 @Entity
 @Data @Builder
