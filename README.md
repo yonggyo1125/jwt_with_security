@@ -248,6 +248,111 @@ public class MemberJoinService {
 
 # JWT 설정
 
+> models/member/MemberInfo.java
+
+```java
+package org.koreait.models.member;
+
+import lombok.Builder;
+import lombok.Data;
+import org.koreait.entities.Member;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+
+@Data
+@Builder
+public class MemberInfo implements UserDetails {
+
+    private String email;
+    private String name;
+    private Member member;
+
+    private Collection<? extends GrantedAuthority> authorities;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return authorities;
+    }
+
+    @Override
+    public String getPassword() {
+        if (member != null)
+            return member.getPassword();
+
+        return null;
+    }
+
+    @Override
+    public String getUsername() {
+       return email;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+}
+```
+
+> models/member/MemberInfoService.java
+
+```java
+package org.koreait.models.member;
+
+import lombok.RequiredArgsConstructor;
+import org.koreait.commons.constants.MemberType;
+import org.koreait.entities.Member;
+import org.koreait.repositories.MemberRepository;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+
+@Service
+@RequiredArgsConstructor
+public class MemberInfoService implements UserDetailsService {
+    private final MemberRepository repository;
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        Member member = repository.findByEmail(username).orElseThrow(() -> new UsernameNotFoundException(username));
+
+        MemberType type = Objects.requireNonNullElse(member.getType(), MemberType.USER);
+        List<? extends GrantedAuthority> authorities = Arrays.asList(new SimpleGrantedAuthority(type.name()));
+
+        return MemberInfo.builder()
+                .email(member.getEmail())
+                .name(member.getName())
+                .member(member)
+                .authorities(authorities)
+                .build();
+    }
+}
+```
+
 > configs/jwt/JwtProperties.java
 
 ```java
@@ -263,5 +368,130 @@ public class JwtProperties {
     private String secret;
     private Long accessTokenValidityInSeconds;
 }
+```
+
+> configs/jwt/TokenProvider.java
+
+```java
+package org.koreait.configs.jwt;
+
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
+import org.koreait.models.member.MemberInfo;
+import org.koreait.models.member.MemberInfoService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import java.security.Key;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
+
+
+@Slf4j
+public class TokenProvider {
+    private static final String AUTHORITIES_KEY = "auth";
+    private final String secret;
+    private final long tokenValidityInMilliseconds;
+
+    private Key key;
+
+    @Autowired
+    private MemberInfoService memberInfoService;
+
+    public TokenProvider(String secret, long tokenValidityInMilliseconds) {
+        this.secret = secret;
+        this.tokenValidityInMilliseconds = tokenValidityInMilliseconds;
+
+        // 시크릿 값을 복호화(decode) 하여 키 변수에 할당
+        byte[] keyBytes = Decoders.BASE64.decode(secret);
+        this.key = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String createToken(Authentication authentication) {
+        String authorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.joining(","));
+
+        long now = (new Date()).getTime();
+        Date validity = new Date(now + this.tokenValidityInMilliseconds * 1000);
+        return Jwts.builder()
+                .setSubject(authentication.getName())
+                .claim(AUTHORITIES_KEY, authorities)
+                .signWith(key, SignatureAlgorithm.HS512) // HMAC + SHA512
+                .setExpiration(validity)
+                .compact();
+    }
+
+    /**
+     * 토큰을 받아 클레임을 생성
+     * 클레임에서 권한 정보를 가져와서 시큐리티 UserDetails 객체를 만들고
+     * Authentication 객체 반환
+     *
+     * @param token
+     * @return
+     */
+    public Authentication getAuthentication(String token) {
+        Claims claims = Jwts.parser()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getPayload();
+
+        List<? extends GrantedAuthority> authorities =
+                Arrays.stream(claims.get(AUTHORITIES_KEY).toString().split(","))
+                        .map(SimpleGrantedAuthority::new)
+                        .collect(Collectors.toList());
+
+        MemberInfo memberInfo = (MemberInfo)memberInfoService.loadUserByUsername(claims.getSubject());
+        memberInfo.setAuthorities(authorities);
+
+        return new UsernamePasswordAuthenticationToken(memberInfo, token, authorities);
+    }
+
+    /**
+     * 토큰 유효성 체크
+     *
+     * @param token
+     * @return
+     */
+    public boolean validateToken(String token) {
+        try {
+            Claims claims = Jwts.parser().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            return true;
+        } catch (io.jsonwebtoken.security.SecurityException | MalformedJwtException e) {
+            log.info("잘못된 JWT 서명입니다.");
+        } catch (ExpiredJwtException e) {
+            log.info("만료된 JWT 토큰입니다.");
+        } catch (UnsupportedJwtException e) {
+            log.info("지원되지 않는 JWT 토큰 입니다.");
+        } catch (IllegalArgumentException e) {
+            log.info("JWT 토큰이 잘못되었습니다.");
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+}
+```
+> <code>TokenProvider</code> : 토큰을 생성하고 검증하며 토큰에서 정보를 꺼내 스프링 시큐리티 <code>Authentication</code> 객체를 생성하는 역할을 수행
+
+> HMAC
+> 해싱과 공유키를 사용한 MAC 기술이 바로 HMAC
+> HMAC(Hash based Message Authentication Code)은 RFC2104로 발표된 MAC 기술의 일종으로,
+원본 메시지가 변하면 그 해시값도 변하는 해싱(Hashing)의 특징을 활용하여 메시지의 변조 여부를 확인(인증) 하여 무결성과 기밀성을 제공하는 기술입니다.
+일반 해싱 알고리즘과 HMAC의 공통점은 해싱 알고리즘이 적용된 해싱 함수를 사용한다는 것이고,
+> 가장 큰 차이는, HMAC은 해시 암호 키를 송신자와 수신자가 미리 나눠가지고 이를 사용한다는 것입니다.
+> 송수신 자만 공유하고 있는 키와 원본 메시지를 혼합하여 해시값을 만들고 이를 비교하는 방식입니다.
+
+```
+HMAC = Hash(Message, key) + Message
+※ hash() 함수는 sha1, sha2, md5등의 알고리즘 사용 
 ```
 
