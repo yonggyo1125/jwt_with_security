@@ -39,6 +39,7 @@ jwt:
   accessTokenValidityInSeconds: 3600 # 60 min
 ```
 
+
 - <code>jwt.secret</code>는 base64로 인코딩한 값 사용, 일정 길이 이상이 되지 않으면 exception이 발생하므로 충분히 길게 설정
 - <code>access-token-validity-in-seconds</code> : 발급할 액세스토큰의 유효기간(초 단위) 예) - 3600 - 60분
 
