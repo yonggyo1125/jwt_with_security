@@ -42,3 +42,140 @@ jwt:
 - <code>jwt.secret</code>는 base64로 인코딩한 값 사용, 일정 길이 이상이 되지 않으면 exception이 발생하므로 충분히 길게 설정
 - <code>access-token-validity-in-seconds</code> : 발급할 액세스토큰의 유효기간(초 단위) 예) - 3600 - 60분
 
+
+# 회원가입 구현하기
+
+## 엔티티 구성하기
+
+> configs/MvcConfig.java
+
+```java
+package org.koreait.configs;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+@EnableJpaAuditing
+public class MvcConfig implements WebMvcConfigurer {
+    
+}
+```
+> configs/SecurityConfig.java
+
+```java
+package org.koreait.configs;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+```
+
+> commons/constants/MemberType.java
+
+```java
+package org.koreait.commons.constants;
+
+public enum MemberType {
+    USER, // 일반회원
+    ADMIN // 관리자
+}
+```
+
+> entities/BaseEntity.java 
+
+```java
+package org.koreait.entities;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.MappedSuperclass;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+
+@MappedSuperclass @Getter @Setter
+@EntityListeners(AuditingEntityListener.class)
+public abstract class BaseEntity {
+    @CreatedDate
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(insertable = false)
+    private LocalDateTime modifiedAt;
+}
+```
+
+> entities/Member.java
+
+```java
+package org.koreait.entities;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.koreait.commons.constants.MemberType;
+import org.springframework.data.annotation.Id;
+
+@Entity
+@Data @Builder
+@NoArgsConstructor @AllArgsConstructor
+public class Member extends BaseEntity {
+    @Id
+    @GeneratedValue
+    private Long seq;
+    @Column(length=60, unique = true, nullable = false)
+    private String email;
+
+    @Column(length=65, nullable = false)
+    private String password;
+
+    @Column(length=30, nullable = false)
+    private String name;
+
+    private String mobile;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length=30, nullable = false)
+    private MemberType type = MemberType.USER;
+}
+```
+
+> repositories/MemberRepository.java
+
+```java
+package org.koreait.repositories;
+
+import org.koreait.entities.Member;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface MemberRepository extends JpaRepository<Member, Long> {
+    Optional<Member> findByEmail(String email);
+}
+```
+
