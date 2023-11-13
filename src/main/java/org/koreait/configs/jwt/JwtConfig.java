@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(JwtConfig.class)
+@EnableConfigurationProperties(JwtProperties.class)
 public class JwtConfig {
     @Bean
     public TokenProvider tokenProvider(JwtProperties jwtProperties) {
