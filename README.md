@@ -1,3 +1,11 @@
+# 학습 순서
+
+- [초기설정](https://github.com/yonggyo1125/jwt_with_security/tree/initialSetting)
+- [회원가입구현](https://github.com/yonggyo1125/jwt_with_security/tree/join)
+- [JWT 설정](https://github.com/yonggyo1125/jwt_with_security/tree/jwtSetting)
+- [스프링 시큐리티 설정](https://github.com/yonggyo1125/jwt_with_security/tree/securitySetting)
+- [API 구현](https://github.com/yonggyo1125/jwt_with_security/tree/apiImpl)
+
 # JWT(Json Web Token)
 > JWT는 RFC7519 웹 표준으로 JSON 객체를 이용해 데이터를 주고 받을 수 있도록한 웹 토큰
 
@@ -804,6 +812,20 @@ public class CommonException extends RuntimeException {
 }
 ```
 
+> commons/exceptions/BadRequestException.java
+
+```java
+package org.koreait.commons.exceptions;
+
+import org.springframework.http.HttpStatus;
+
+public class BadRequestException extends CommonException {
+    public BadRequestException(String message) {
+        super(message, HttpStatus.BAD_REQUEST);
+    }
+}
+```
+
 > api/commons/JSONData.java
 
 ```java
@@ -864,5 +886,7 @@ public class ApiCommonController {
     }
 }
 ```
+
+
 
 
