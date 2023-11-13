@@ -27,7 +27,7 @@ public class MemberJoinService {
     }
 
     public void save(Member member) {
-
+        System.out.println(member);
         repository.saveAndFlush(member);
     }
 }

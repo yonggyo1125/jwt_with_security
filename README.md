@@ -541,7 +541,7 @@ import java.io.IOException;
 @Component
 @RequiredArgsConstructor
 public class CustomJwtFilter extends GenericFilterBean {
-    private static final String AUTHORIZATION_HEADER = "Authorization";
+    public static final String AUTHORIZATION_HEADER = "Authorization";
 
     private final TokenProvider tokenProvider;
     
@@ -714,4 +714,155 @@ public class SecurityConfig {
 - <code>IF_REQUIRED</code> : 스프링 시큐리티가 필요시 생성(기본값)
 - <code>NEVER</code> : 스프링 시큐리티가 생성하지 않지만 기존에 존재하면 사용
 - <code>STATELESS</code> : 스프링 시큐리티가 생성하지도 않고 기존의 것을 사용하지도 않음(JWT와 같은 토큰 방식을 쓸때 사용)
+
+
+# 액세스토큰 인증 API 구현
+
+> api/members/dto/RequestJoin.java
+
+```java
+package org.koreait.api.members.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+
+public record RequestLogin(
+        @NotBlank @Email
+        String email,
+
+        @NotBlank
+        String password
+) {}
+```
+
+> api/members/dto/ResponseLogin.java
+
+```java
+package org.koreait.api.members.dto;
+
+import lombok.Builder;
+
+@Builder
+public record ResponseLogin(
+        String accessToken
+) {}
+```
+
+> models/member/MemberLoginService.java
+
+```java
+package org.koreait.models.member;
+
+import lombok.RequiredArgsConstructor;
+import org.koreait.api.members.dto.ResponseLogin;
+import org.koreait.configs.jwt.TokenProvider;
+import org.koreait.repositories.MemberRepository;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class MemberLoginService {
+    private final TokenProvider tokenProvider;
+    private final AuthenticationManagerBuilder authenticationManagerBuilder;
+    private final MemberRepository repository;
+
+    public ResponseLogin authenticate(String email, String password) {
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(email, password);
+
+        Authentication authentication = authenticationManagerBuilder.getObject().authenticate(authenticationToken);
+
+        // 인증 정보를 가지고 JWT AccessToken 발급
+        String accessToken = tokenProvider.createToken(authentication);
+
+        return ResponseLogin.builder()
+                .accessToken(accessToken)
+                .build();
+    }
+}
+```
+
+> commons/exceptions/CommonException.java
+
+```java
+package org.koreait.commons.exceptions;
+
+import org.springframework.http.HttpStatus;
+
+public class CommonException extends RuntimeException {
+    private HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+    public CommonException(String message, HttpStatus status) {
+        super(message);
+        this.status = status;
+    }
+
+    public HttpStatus getStatus() {
+        return status;
+    }
+}
+```
+
+> api/commons/JSONData.java
+
+```java
+package org.koreait.api.commons;
+
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+
+@Data
+@NoArgsConstructor
+@RequiredArgsConstructor
+public class JSONData<T> {
+    private boolean success = true;
+
+    @NonNull
+    private T data;
+
+    private String message;
+    private HttpStatus status = HttpStatus.OK;
+}
+```
+
+> api/ApiCommonController.java
+
+```java
+package org.koreait.api;
+
+import org.koreait.api.commons.JSONData;
+import org.koreait.commons.exceptions.CommonException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice("org.koreait.api")
+public class ApiCommonController {
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<JSONData<Object>> errorHandler(Exception e) {
+        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (e instanceof CommonException) {
+            CommonException commonException = (CommonException)e;
+            status = commonException.getStatus();
+        } else if (e instanceof BadCredentialsException) {
+            status = HttpStatus.UNAUTHORIZED;
+        }
+
+        JSONData<Object> data = new JSONData<>();
+        data.setMessage(e.getMessage());
+        data.setStatus(status);
+
+        e.printStackTrace();
+
+        return ResponseEntity.status(status).body(data);
+    }
+}
+```
+
 
