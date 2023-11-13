@@ -578,3 +578,140 @@ public class CustomJwtFilter extends GenericFilterBean {
 - 액세스토큰을 검증하는 역할을 수행하는 <code>GenericFilterBean</code>을 상속받아 <code>CustomJwtFilter</code>를 작성합니다.
 - <code>doFilter</code> 메서드 영역 : 토큰의 유효성을 검증하고, 토큰에서 식별자인 <code>username</code>과 해당 토큰에 부여된 권한을 스프링 시큐리티 <code>Authentication</code> 객체를 생성하고 <code>Security Context</code>에 저장
 - 즉, 토큰 검증을 하고 데이터 베이스에 사용자가 있는지를 조회한다는 것
+
+# 시큐리티 설정 추가 
+
+> configs/jwt/CorsFilterConfig.java
+
+```java
+package org.koreait.configs.jwt;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+@Configuration
+public class CorsFilterConfig {
+    @Bean
+    public CorsFilter corsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedOrigin("*");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+
+        source.registerCorsConfiguration("/api/**", config);
+        
+        return new CorsFilter(source);
+    }
+}
+```
+
+-  <code>config.addAllowedOrigin("*");</code> : 실제 서비스에서는 *가 아니라 연동할 도메인으로 한정한다(보안 강화)
+
+> configs/jwt/JwtAuthenticationEntryPoint.java
+
+```java
+package org.koreait.configs.jwt;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+@Component
+public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
+
+        // 자격증명 없이 페이지 접근시 접근권한 없음(401)
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+    }
+}
+```
+
+- <code>AuthenticationEntryPoint</code> 인터페이스 : 인증 실패 시 동작하도록 시큐리티 설정파일 작성 시 지정, 상속을 통해 구현
+ 
+> configs/SecurityConfig.java
+
+```java
+package org.koreait.configs;
+
+import org.koreait.configs.jwt.CustomJwtFilter;
+import org.koreait.configs.jwt.JwtAccessDeniedHandler;
+import org.koreait.configs.jwt.JwtAuthenticationEntryPoint;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.filter.CorsFilter;
+
+@Configuration
+@EnableWebSecurity // 기본 웹 보안 활성화
+@EnableMethodSecurity // @PreAuthorize 애노테이션 활성화
+public class SecurityConfig {
+
+    @Autowired
+    private CorsFilter corsFilter;
+
+    @Autowired
+    private CustomJwtFilter customJwtFilter;
+
+    @Autowired
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+
+    @Autowired
+    private JwtAccessDeniedHandler jwtAccessDeniedHandler;
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.csrf(c -> c.disable())
+                .addFilterBefore(corsFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(customJwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .sessionManagement(c -> c.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(c -> {
+                    c.authenticationEntryPoint(jwtAuthenticationEntryPoint).accessDeniedHandler(jwtAccessDeniedHandler);
+                })
+                .authorizeHttpRequests(c -> {
+                   c.requestMatchers("/api/v1/member",
+                           "/api/v1/member/token",
+                           "/api/v1/member/login",
+                           "/api/v1/member/exists/**").permitAll()
+                           .anyRequest().authenticated();
+                });
+        
+        return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+
+        return new BCryptPasswordEncoder();
+    }
+}
+```
+
+- <code>@EnableMethodSecurity</code> : <code>@PreAuthorize</code> 애노테이션 사용을 위해 선언
+- <code>@EnableWebSecurity</code> : 기본적인 웹보환을 활성화하는 애노테이션
+
+> 스프링 시큐리티 세션 정책(Session Creation Policy)
+> SessionCreationPolicy
+
+- <code>ALWAYS</code> : 스프링 시큐리티가 항상 세션을 생성
+- <code>IF_REQUIRED</code> : 스프링 시큐리티가 필요시 생성(기본값)
+- <code>NEVER</code> : 스프링 시큐리티가 생성하지 않지만 기존에 존재하면 사용
+- <code>STATELESS</code> : 스프링 시큐리티가 생성하지도 않고 기존의 것을 사용하지도 않음(JWT와 같은 토큰 방식을 쓸때 사용)
+
