@@ -6,6 +6,8 @@
 - [스프링 시큐리티 설정](https://github.com/yonggyo1125/jwt_with_security/tree/securitySetting)
 - [API 구현](https://github.com/yonggyo1125/jwt_with_security/tree/apiImpl)
 
+> [동영상강의](https://drive.google.com/drive/folders/1Ki68eH-pJnhr7MYlZtWT8pSQWAiLbf7v?usp=sharing)
+
 # JWT(Json Web Token)
 > JWT는 RFC7519 웹 표준으로 JSON 객체를 이용해 데이터를 주고 받을 수 있도록한 웹 토큰
 
