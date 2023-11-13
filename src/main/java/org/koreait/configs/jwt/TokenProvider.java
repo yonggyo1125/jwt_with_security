@@ -23,16 +23,16 @@ import java.util.stream.Collectors;
 public class TokenProvider {
     private static final String AUTHORITIES_KEY = "auth";
     private final String secret;
-    private final long tokenValidityInMilliseconds;
+    private final long tokenValidityInSeconds;
 
     private Key key;
 
     @Autowired
     private MemberInfoService memberInfoService;
 
-    public TokenProvider(String secret, long tokenValidityInMilliseconds) {
+    public TokenProvider(String secret, long tokenValidityInSeconds) {
         this.secret = secret;
-        this.tokenValidityInMilliseconds = tokenValidityInMilliseconds;
+        this.tokenValidityInSeconds = tokenValidityInSeconds;
 
         // 시크릿 값을 복호화(decode) 하여 키 변수에 할당
         byte[] keyBytes = Decoders.BASE64.decode(secret);
@@ -45,7 +45,7 @@ public class TokenProvider {
                 .collect(Collectors.joining(","));
 
         long now = (new Date()).getTime();
-        Date validity = new Date(now + this.tokenValidityInMilliseconds * 1000);
+        Date validity = new Date(now + this.tokenValidityInSeconds * 1000);
         return Jwts.builder()
                 .setSubject(authentication.getName())
                 .claim(AUTHORITIES_KEY, authorities)
