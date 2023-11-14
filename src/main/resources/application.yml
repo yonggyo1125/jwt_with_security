@@ -20,7 +20,7 @@ spring:
         useSqlComments: true
         dialect: org.hibernate.dialect.MySQLDialect
     hibernate:
-      ddlAuto: create
+      ddlAuto: update
 
 logging:
   level:

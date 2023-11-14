@@ -794,7 +794,7 @@ public class MemberLoginService {
 }
 ```
 
-> commons/exceptions/CommonException.java
+> commons/exceptions/CommonException.java : 공통 예외
 
 ```java
 package org.koreait.commons.exceptions;
@@ -814,7 +814,7 @@ public class CommonException extends RuntimeException {
 }
 ```
 
-> commons/exceptions/BadRequestException.java
+> commons/exceptions/BadRequestException.java : 잘못된 요청 관련 예외, 응답 코드를 400으로 고정
 
 ```java
 package org.koreait.commons.exceptions;
@@ -828,7 +828,7 @@ public class BadRequestException extends CommonException {
 }
 ```
 
-> api/commons/JSONData.java
+> api/commons/JSONData.java : JSON 형식 출력의 통일성을 위해 추가 
 
 ```java
 package org.koreait.api.commons;
@@ -853,7 +853,7 @@ public class JSONData<T> {
 }
 ```
 
-> api/ApiCommonController.java
+> api/ApiCommonController.java : 예외를 JSONData 형식으로 공통 처리 
 
 ```java
 package org.koreait.api;
@@ -862,6 +862,7 @@ import org.koreait.api.commons.JSONData;
 import org.koreait.commons.exceptions.CommonException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -876,9 +877,12 @@ public class ApiCommonController {
             status = commonException.getStatus();
         } else if (e instanceof BadCredentialsException) {
             status = HttpStatus.UNAUTHORIZED;
+        } else if (e instanceof AccessDeniedException) {
+            status = HttpStatus.FORBIDDEN;
         }
 
         JSONData<Object> data = new JSONData<>();
+        data.setSuccess(false);
         data.setMessage(e.getMessage());
         data.setStatus(status);
 
@@ -888,7 +892,354 @@ public class ApiCommonController {
     }
 }
 ```
+> src/main/resoureces/messages 디렉토리에 다음과 같이 3개 메세지 파일을 추가 
+> commons.properties
+
+```properties
+Email=이메일 형식이 아닙니다.
+Mobile=휴대전화번호 형식이 아닙니다.
+NotBlank.email=이메일을 입력하세요.
+NotBlank.password=비밀번호를 입력하세요.
+
+NotBlank.confirmPassword=비밀번호를 확인하세요.
+NotBlank.requestJoin.name=회원명을 입력하세요.
+AssertTrue.requestJoin.agree=회원가입 약관에 동의하세요.
+
+Duplicate.email=이미 등록된 이메일 주소 입니다.
+Mismatch.confirmPassword=비밀번호가 일치하지 않습니다.
+Complexity.password=비밀번호는 숫자, 대문자와 소문자로 구성된 알파벳, 특수문자로 구성하세요.
+Size.requestJoin.password=비밀번호는 8자리 이상 입력하세요.
+
+Fail.join=회원가입에 실패하였습니다.
+```
+
+> errors.properties
+> validations.properties
+
+> commons/Utils.java : 메세지 코드 조회 편의 클래스
+
+```java
+package org.koreait.commons;
+
+import org.springframework.validation.Errors;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.ResourceBundle;
+
+public class Utils {
+    private static ResourceBundle validationsBundle;
+    private static ResourceBundle errorsBundle;
+
+    static {
+        validationsBundle = ResourceBundle.getBundle("messages.validations");
+        errorsBundle = ResourceBundle.getBundle("messages.errors");
+    }
+
+    public static String getMessage(String code, String bundleType) {
+        bundleType = Objects.requireNonNullElse(bundleType, "validation");
+        ResourceBundle bundle = bundleType.equals("error")? errorsBundle:validationsBundle;
+        try {
+            return bundle.getString(code);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static List<String> getMessages(Errors errors) {
+        return errors.getFieldErrors().stream().map(f -> Arrays.stream(f.getCodes()).map(c -> getMessage(c + "." + f.getField(), "validation")))
+                .flatMap(s -> s)
+                .filter(s -> s != null && !s.isBlank()).toList();
+    }
+}
+```
+
+> commons/validators/MobileValidator : 휴대폰번호 형식 검증
+
+```java
+package org.koreait.commons.validators;
+
+public interface MobileValidator {
+    default boolean mobileNumCheck(String mobile) {
+        /**
+         * 010-3481-2101
+         * 010_3481_2101
+         * 010 3481 2101
+         *
+         * 1. 형식의 통일화 - 숫자가 아닌 문자 전부 제거 -> 숫자
+         * 2. 패턴 생성 체크
+         */
+        mobile = mobile.replaceAll("\\D", "");
+        String pattern = "^01[016]\\d{3,4}\\d{4}$";
+
+        return mobile.matches(pattern);
+    }
+}
+```
+
+> commons/validators/PasswordValidator : 비밀번호 복잡성 체크 편의 인터페이스
+
+```java
+package org.koreait.commons.validators;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public interface PasswordValidator {
+    /**
+     * 비밀번호 복잡성 체크 - 알파벳 체크
+     *
+     * @param password
+     * @param caseIncentive
+     *          false : 소문자 + 대문자가 반드시 포함되는 패턴
+     *          true : 대소문자 상관없이 포함되는 패턴
+     * @return
+     */
+    default boolean alphaCheck(String password, boolean caseIncentive) {
+        if (caseIncentive) { // 대소문자 구분없이 체크
+            Pattern pattern = Pattern.compile("[a-z]+", Pattern.CASE_INSENSITIVE);
+            return pattern.matcher(password).find();
+        }
+
+        // 대문자, 소문자 각각 체크
+        Pattern pattern1 = Pattern.compile("[a-z]+");
+        Pattern pattern2 = Pattern.compile("[A-Z]+");
+        return pattern1.matcher(password).find() && pattern2.matcher(password).find();
+    }
+    /**
+     * 숫자가 포함된 패턴인지 체크
+     *
+     * @param password
+     * @return
+     */
+    default boolean numberCheck(String password) {
+        Pattern pattern = Pattern.compile("\\d+");
+        Matcher matcher = pattern.matcher(password);
+        return matcher.find();
+    }
+
+    /**
+     * 특수문자가 포함된 패턴인지 체크
+     * @param password
+     * @return
+     */
+    default boolean specialCharsCheck(String password) {
+        Pattern pattern = Pattern.compile("[`~!#$%\\^&\\*()-_+=]+");
+        Matcher matcher = pattern.matcher(password);
+        return matcher.find();
+    }
+}
+```
+
+> repositories/MemberRepository.java - 소스 추가 
+> extends ... , QuerydslPredicateExecutor<Member>
+> exists 메서드 추가 
+
+```java
+...
+
+public interface MemberRepository extends JpaRepository<Member, Long>, QuerydslPredicateExecutor<Member> {
+    Optional<Member> findByEmail(String email);
+
+    default boolean exists(String email) {
+        return exists(QMember.member.email.eq(email));
+    }
+}
+```
+
+> api/members/validator/JoinValidator.java : 회원가입 추가 유효성 검사
+
+```java
+package org.koreait.api.members.validator;
+
+import lombok.RequiredArgsConstructor;
+import org.koreait.api.members.dto.RequestJoin;
+import org.koreait.commons.validators.MobileValidator;
+import org.koreait.commons.validators.PasswordValidator;
+import org.koreait.repositories.MemberRepository;
+import org.springframework.stereotype.Component;
+import org.springframework.validation.Errors;
+import org.springframework.validation.Validator;
+
+/**
+ * 회원 가입 추가 유효성 검사
+ *
+ */
+@Component
+@RequiredArgsConstructor
+public class JoinValidator implements Validator, PasswordValidator, MobileValidator {
+
+    private final MemberRepository repository;
+
+    @Override
+    public boolean supports(Class<?> clazz) {
+        return clazz.isAssignableFrom(RequestJoin.class);
+    }
+
+    @Override
+    public void validate(Object target, Errors errors) {
+        RequestJoin form = (RequestJoin)target;
+
+        /**
+         * 1. 아이디 중복 여부 체크
+         * 2. 비밀번호 복잡성 체크
+         * 3. 비밀번호 및 비밀번호 확인 일치 여부
+         * 4. 휴대전화번호 형식 체크
+         */
+
+        String email = form.email();
+        String password = form.password();
+        String confirmPassword = form.confirmPassword();
+        String mobile = form.mobile();
+
+        // 1. 아이디 중복 여부 체크
+        if (email != null && !email.isBlank() && repository.exists(email)) {
+            errors.rejectValue("email", "duplicate");
+        }
+
+        // 2. 비밀번호 복잡성 체크
+        if (password != null && !password.isBlank() && (!alphaCheck(password, false) || !numberCheck(password) || !specialCharsCheck(password))) {
+            errors.rejectValue("password", "Complexity");
+        }
+
+        // 3. 비밀번호 및 비밀번호 확인 일치 여부
+        if (password != null && !password.isBlank() && confirmPassword != null && !confirmPassword.isBlank() && !password.equals(confirmPassword)) {
+            errors.rejectValue("confirmPassword", "mismatch");
+        }
+
+        // 4. 휴대전화번호 형식 체크
+        if (mobile != null && !mobile.isBlank() && !mobileNumCheck(mobile)) {
+            errors.rejectValue("mobile", "Mobile");
+        }
+    }
+}
+```
+
+> models/member/MemberJoinService.java : 추가 유효성 검사 코드 추가 
+
+```java
+
+...
+
+@Service
+@RequiredArgsConstructor
+public class MemberJoinService {
+    private final MemberRepository repository;
+    private final PasswordEncoder passwordEncoder;
+    private final JoinValidator validator; // 추가 
+
+    // 추가 
+    public void save(RequestJoin join, Errors errors) {
+        validator.validate(join, errors);
+        if (errors.hasErrors()) {
+            return;
+        }
+
+        save(join);
+    }
+
+    ...
+}
+```
+
+> api/members/MemberController.java
+
+```java
+package org.koreait.api.members;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.koreait.api.commons.JSONData;
+import org.koreait.api.members.dto.RequestJoin;
+import org.koreait.api.members.dto.RequestLogin;
+import org.koreait.api.members.dto.ResponseLogin;
+import org.koreait.commons.Utils;
+import org.koreait.commons.exceptions.BadRequestException;
+import org.koreait.configs.jwt.CustomJwtFilter;
+import org.koreait.models.member.MemberInfoService;
+import org.koreait.models.member.MemberJoinService;
+import org.koreait.models.member.MemberLoginService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.Errors;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/v1/member")
+@RequiredArgsConstructor
+public class MemberController {
+    private final MemberLoginService loginService;
+    private final MemberInfoService infoService;
+    private final MemberJoinService joinService;
+
+    /**
+     * accessToken 발급
+     *
+     */
+    @PostMapping("/token")
+    public ResponseEntity<JSONData<ResponseLogin>> authorize(@Valid @RequestBody RequestLogin requestLogin, Errors errors) {
+        // 유효성 검사 처리
+        errorProcess(errors);
+
+        ResponseLogin token = loginService.authenticate(requestLogin.email(), requestLogin.password());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(CustomJwtFilter.AUTHORIZATION_HEADER, "Bearer " + token.accessToken());
+
+        JSONData<ResponseLogin> data = new JSONData<>(token);
+
+        return ResponseEntity.status(data.getStatus())
+                .headers(headers)
+                .body(data);
+    }
 
 
+    /**
+     * 회원가입 처리
+     *
+     * @return
+     */
+    @PostMapping
+    public ResponseEntity<JSONData<Object>> join(@RequestBody @Valid RequestJoin form, Errors errors) {
+
+        joinService.save(form, errors);
+
+        // 유효성 검사 처리
+        errorProcess(errors);
+
+        HttpStatus status = HttpStatus.CREATED;
+        JSONData<Object> data = new JSONData<>();
+        data.setSuccess(true);
+        data.setStatus(status);
+
+        return ResponseEntity.status(status).body(data);
+    }
+
+    private void errorProcess(Errors errors) {
+        if (errors.hasErrors()) {
+            List<String> errorMessages = Utils.getMessages(errors);
+            throw new BadRequestException(errorMessages.stream().collect(Collectors.joining("||")));
+        }
+    }
 
 
+    @GetMapping("/member_only")
+    public void MemberOnlyUrl() {
+        log.info("회원 전용 URL 접근 테스트");
+    }
+
+    @GetMapping("/admin_only")
+    @PreAuthorize("hasAnyAuthority('ADMIN')")
+    public void adminOnlyUrl() {
+        log.info("관리자 전용 URL 접근 테스트");
+    }
+}
+```
