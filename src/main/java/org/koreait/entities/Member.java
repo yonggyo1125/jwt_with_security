@@ -23,6 +23,7 @@ public class Member extends BaseEntity {
     @Column(length=30, nullable = false)
     private String name;
 
+    @Column(length=11)
     private String mobile;
 
     @Enumerated(EnumType.STRING)
