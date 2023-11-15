@@ -14,13 +14,13 @@ spring:
     properties:
       hibernate:
         # 실행되는 쿼리 콘솔 출력
-        showSql: true
+        show_sql: true
         # 콘솔 창에 출력되는 쿼리를 가독성 좋게 포매팅
-        formatSql: true
-        useSqlComments: true
+        format_sql: true
+        use_sql_comments: true
         dialect: org.hibernate.dialect.MySQLDialect
     hibernate:
-      ddlAuto: update
+      ddlAuto: create
 
 logging:
   level:

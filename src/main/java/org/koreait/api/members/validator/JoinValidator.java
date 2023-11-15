@@ -42,7 +42,7 @@ public class JoinValidator implements Validator, PasswordValidator, MobileValida
 
         // 1. 아이디 중복 여부 체크
         if (email != null && !email.isBlank() && repository.exists(email)) {
-            errors.rejectValue("email", "duplicate");
+            errors.rejectValue("email", "Duplicate");
         }
 
         // 2. 비밀번호 복잡성 체크
@@ -52,7 +52,7 @@ public class JoinValidator implements Validator, PasswordValidator, MobileValida
 
         // 3. 비밀번호 및 비밀번호 확인 일치 여부
         if (password != null && !password.isBlank() && confirmPassword != null && !confirmPassword.isBlank() && !password.equals(confirmPassword)) {
-            errors.rejectValue("confirmPassword", "mismatch");
+            errors.rejectValue("confirmPassword", "Mismatch");
         }
 
         // 4. 휴대전화번호 형식 체크
